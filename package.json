@@ -1,0 +1,14 @@
+{
+  "name": "parser-generator",
+  "version": "1.0.0",
+  "description": "Extracts data from WebToEpub parsers",
+  "main": "generate_json.js",
+  "type": "module",
+  "scripts": {
+    "start": "node generate_json.js"
+  },
+  "dependencies": {
+    "@babel/parser": "^7.24.7",
+    "glob": "^10.4.1"
+  }
+}
