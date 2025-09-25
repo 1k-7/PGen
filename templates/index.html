@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>JS to Python Parser Converter</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body { font-family: 'Inter', sans-serif; }
+        #log-container {
+            height: 60vh;
+            background-color: #1a202c;
+            color: #a0aec0;
+        }
+        .log-line {
+            white-space: pre-wrap;
+            word-wrap: break-word;
+        }
+    </style>
+</head>
+<body class="bg-gray-900 text-white flex flex-col items-center justify-center min-h-screen p-4">
+
+    <div class="w-full max-w-4xl bg-gray-800 rounded-lg shadow-xl p-8">
+        <div class="text-center mb-8">
+            <h1 class="text-4xl font-bold text-cyan-400">Automated Parser Factory</h1>
+            <p class="text-gray-400 mt-2">Convert 350+ WebToEpub JS parsers to Python using AI</p>
+        </div>
+
+        <div class="text-center mb-8">
+            <button id="startButton" class="bg-cyan-500 hover:bg-cyan-600 text-white font-bold py-3 px-8 rounded-lg text-xl transition duration-300 transform hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed">
+                Start Generation
+            </button>
+        </div>
+
+        <div id="log-container" class="w-full bg-gray-900 border border-gray-700 rounded-lg p-4 overflow-y-auto font-mono text-sm">
+            <div id="logs">
+                <p class="text-gray-500">Logs will appear here when the process starts...</p>
+            </div>
+        </div>
+
+        <div id="result" class="mt-8 text-center hidden">
+            <h2 class="text-2xl font-semibold text-green-400">Conversion Complete!</h2>
+            <p class="mt-2">Your ZIP file is ready. Click the link below to download:</p>
+            <a id="downloadLink" href="#" target="_blank" class="mt-4 inline-block bg-green-500 hover:bg-green-600 text-white font-bold py-2 px-6 rounded transition duration-300 break-all"></a>
+        </div>
+    </div>
+
+    <script>
+        const startButton = document.getElementById('startButton');
+        const logsDiv = document.getElementById('logs');
+        const resultDiv = document.getElementById('result');
+        const downloadLink = document.getElementById('downloadLink');
+
+        startButton.addEventListener('click', () => {
+            startButton.disabled = true;
+            startButton.textContent = 'Processing... Please Wait';
+            logsDiv.innerHTML = '<p class="text-yellow-400">Initializing process... This may take several minutes.</p>';
+            resultDiv.classList.add('hidden');
+
+            const eventSource = new EventSource('/start-conversion');
+
+            eventSource.onmessage = function(event) {
+                if (logsDiv.querySelector('.text-gray-500')) {
+                    logsDiv.innerHTML = ''; // Clear initial message
+                }
+                
+                if (event.data === '---END---') {
+                    eventSource.close();
+                    startButton.disabled = false;
+                    startButton.textContent = 'Start Generation';
+                    return;
+                }
+
+                if (event.data.startsWith('🎉 DONE!')) {
+                    const parts = event.data.split(' ');
+                    const url = parts[parts.length - 1];
+                    downloadLink.href = url;
+                    downloadLink.textContent = url;
+                    resultDiv.classList.remove('hidden');
+                     // Scroll to the bottom to show the link
+                    window.scrollTo(0, document.body.scrollHeight);
+                }
+
+                const logLine = document.createElement('p');
+                logLine.className = 'log-line';
+                logLine.textContent = event.data;
+                
+                if (event.data.startsWith('✅') || event.data.startsWith('🎉')) {
+                    logLine.classList.add('text-green-400');
+                } else if (event.data.startsWith('❌')) {
+                    logLine.classList.add('text-red-400');
+                } else if (event.data.startsWith('⚠️')) {
+                    logLine.classList.add('text-yellow-400');
+                }
+
+                logsDiv.appendChild(logLine);
+                logsDiv.parentElement.scrollTop = logsDiv.parentElement.scrollHeight; // Auto-scroll
+            };
+
+            eventSource.onerror = function() {
+                const errorLine = document.createElement('p');
+                errorLine.className = 'log-line text-red-500';
+                errorLine.textContent = 'Connection to server lost. Process may have been interrupted.';
+                logsDiv.appendChild(errorLine);
+                logsDiv.parentElement.scrollTop = logsDiv.parentElement.scrollHeight;
+                eventSource.close();
+                startButton.disabled = false;
+                startButton.textContent = 'Start Generation';
+            };
+        });
+    </script>
+</body>
+</html>
+
