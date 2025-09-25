@@ -1,0 +1,14 @@
+services:
+  - type: web
+    name: parser-factory
+    env: python
+    plan: free
+    buildCommand: "pip install -r requirements.txt && npm install"
+    startCommand: "gunicorn app:app --timeout 120"
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.4
+      - key: NODE_VERSION
+        value: 20.11.1
+      - key: GEMINI_API_KEY # Leave value blank, will be provided by Canvas
+        value: ""
