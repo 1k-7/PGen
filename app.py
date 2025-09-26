@@ -9,9 +9,8 @@ import time
 import ast
 
 # --- Configuration ---
-# In a real deployed app, use environment variables. For this example, we leave it blank.
-# The hosting platform (Canvas) will provide the key at runtime.
-GEMINI_API_KEY = ""
+# Read the API key from the environment variable set in Render.
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
 JS_PARSERS_DIR = 'webtoepub_js_parsers'
 GENERATED_DIR = 'generated_parsers'
 OUTPUT_JSON = 'parsers_data.json'
@@ -65,6 +64,9 @@ def extract_parser_data():
 
 def call_gemini_api(prompt):
     """Calls the Gemini API to convert JS to Python."""
+    if not GEMINI_API_KEY:
+        raise ValueError("GEMINI_API_KEY is not set. Please add it to your environment variables.")
+        
     api_url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-05-20:generateContent?key={GEMINI_API_KEY}"
     payload = {
         "contents": [{"parts": [{"text": prompt}]}],
