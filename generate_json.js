@@ -6,12 +6,13 @@ import { parse } from '@babel/parser';
 const SOURCE_DIR = 'webtoepub_js_parsers';
 const OUTPUT_FILE = 'parsers_data.json';
 
-// Helper to find specific string return values in simple methods
+// Helper to find specific string return values in simple methods by analyzing the AST
 function findReturnedSelector(methodBody) {
     if (!methodBody || !methodBody.body || !methodBody.body.length) return null;
     const returnStatement = methodBody.body.find(node => node.type === 'ReturnStatement');
 
     if (returnStatement && returnStatement.argument) {
+        // Case: return this.dom.querySelector('selector')
         if (returnStatement.argument.type === 'CallExpression') {
             const callee = returnStatement.argument.callee;
             if (callee && callee.property && callee.property.name === 'querySelector' && returnStatement.argument.arguments.length > 0) {
@@ -21,8 +22,13 @@ function findReturnedSelector(methodBody) {
                 }
             }
         }
+        // Case: return 'selector'
         if (returnStatement.argument.type === 'StringLiteral') {
             return returnStatement.argument.value;
+        }
+         // Case: return dom.querySelector("div.book-name");
+        if(returnStatement.argument.type === 'CallExpression' && returnStatement.argument.callee.property.name === 'querySelector'){
+            return returnStatement.argument.arguments[0].value;
         }
     }
     return null;
@@ -43,26 +49,35 @@ function main() {
         const content = fs.readFileSync(file, 'utf-8');
 
         try {
-            const ast = parse(content, { sourceType: 'module' });
+            const ast = parse(content, { sourceType: 'module', plugins: ["classProperties"] });
+
             let className = null;
             let baseUrls = [];
-            let selectors = {};
+            let selectors = {
+                content: null,
+                title: null,
+                author: null,
+                cover: null,
+            };
 
             for (const node of ast.program.body) {
+                // Find Class Declaration
                 if (node.type === 'ClassDeclaration') {
                     className = node.id.name;
                     const methods = node.body.body;
+                    
                     const findContentMethod = methods.find(m => m.key.name === 'findContent');
                     const extractTitleMethod = methods.find(m => m.key.name === 'extractTitleImpl');
                     const extractAuthorMethod = methods.find(m => m.key.name === 'extractAuthor');
                     const findCoverMethod = methods.find(m => m.key.name === 'findCoverImageUrl');
-                    
-                    selectors.content = findReturnedSelector(findContentMethod?.body);
-                    selectors.title = findReturnedSelector(extractTitleMethod?.body);
-                    selectors.author = findReturnedSelector(extractAuthorMethod?.body);
-                    selectors.cover = findReturnedSelector(findCoverMethod?.body);
+
+                    if (findContentMethod) selectors.content = findReturnedSelector(findContentMethod.body);
+                    if (extractTitleMethod) selectors.title = findReturnedSelector(extractTitleMethod.body);
+                    if (extractAuthorMethod) selectors.author = findReturnedSelector(extractAuthorMethod.body);
+                    if (findCoverMethod) selectors.cover = findReturnedSelector(findCoverMethod.body);
                 }
 
+                // Find parserFactory.register() calls
                 if (node.type === 'ExpressionStatement' && node.expression.type === 'CallExpression') {
                     const callee = node.expression.callee;
                     if (callee.type === 'MemberExpression' && callee.object.name === 'parserFactory' && callee.property.name === 'register') {
@@ -82,15 +97,17 @@ function main() {
                     selectors: selectors
                 });
             } else if (className) {
-                 console.warn(`WARNING: Skipping ${fileName}: Found class '${className}' but no parserFactory.register() call.`);
+                 console.warn(`WARNING: Skipping ${fileName}: Found class '${className}' but could not find any parserFactory.register() calls.`);
             }
+
         } catch (e) {
-            // Ignore parsing errors for files that aren't modules
+            // This can happen for non-module files, which we can safely ignore.
+            // console.error(`Could not parse ${fileName}: ${e.message}`);
         }
     }
 
     fs.writeFileSync(OUTPUT_FILE, JSON.stringify(allParsersData, null, 2));
-    console.log(`Extraction complete! Data saved to ${OUTPUT_FILE}`);
+    console.log(`\nExtraction complete! Data saved to ${OUTPUT_FILE}`);
 }
 
 main();
