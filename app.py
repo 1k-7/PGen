@@ -5,6 +5,7 @@ import subprocess
 import zipfile
 import time
 import ast
+import requests  # <-- THIS LINE WAS MISSING
 from flask import Flask, jsonify, render_template_string, request
 
 # --- Configuration ---
