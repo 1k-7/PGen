@@ -3,7 +3,7 @@ import os
 import re
 import subprocess
 import zipfile
-from flask import Flask, Response, render_template_string, jsonify, request
+from flask import Flask, Response, render_template_string
 import requests
 import time
 import ast
@@ -117,6 +117,7 @@ def convert_and_validate_parsers():
             continue
 
         python_code = None
+        validation_error = None
         for attempt in range(3): # Allow up to 3 self-correction attempts
             if attempt == 0:
                 prompt = f"""
@@ -127,7 +128,7 @@ def convert_and_validate_parsers():
                 2. Use the exact class name: `{class_name}`.
                 3. The `base_url` must be a Python list of strings: {json.dumps(parser_data['base_urls'])}.
                 4. Implement the following methods if their corresponding selector is present: `find_content`, `extract_title`, `extract_author`, `find_cover_image_url`.
-                5. The methods should use `dom.select_one('{selector}')` to find the element.
+                5. The methods should use `dom.select_one('{{selector}}')` to find the element.
                 6. For methods where no selector was extracted, add a comment indicating that manual implementation is needed and call the super method.
                 7. Always include a placeholder `get_chapter_urls` method that returns an empty list and has a comment explaining it needs manual implementation.
                 8. The final output must be ONLY the Python code block, with no explanations or markdown fences.
@@ -223,7 +224,6 @@ def convert_and_validate_parsers():
 @app.route('/')
 def index():
     """Render the main UI."""
-    # This is a self-contained HTML file for simplicity
     return render_template_string(open("templates/index.html").read())
 
 @app.route('/start-conversion')
@@ -240,7 +240,6 @@ def start_conversion():
     return Response(generate(), mimetype='text/event-stream')
 
 if __name__ == '__main__':
-    # Check for Node.js dependencies before starting
     if not os.path.exists('node_modules'):
         print("Node.js dependencies not found. Running 'npm install'...")
         try:
@@ -248,7 +247,6 @@ if __name__ == '__main__':
             print("npm install successful.")
         except Exception as e:
             print(f"Failed to install Node.js dependencies: {e}")
-            # Exit if setup fails
             exit(1)
             
     app.run(debug=True, host='0.0.0.0', port=int(os.environ.get('PORT', 8080)))
