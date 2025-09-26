@@ -47,24 +47,31 @@ def index():
     """Render the main user interface."""
     return render_template_string(open("templates/index.html").read())
 
-@app.route('/start-job', methods=['POST'])
-def start_job():
+@app.route('/extract-data', methods=['POST'])
+def extract_data():
     """
-    Cleans up old files and returns the list of parsers to be converted.
-    This is the first step, triggered by the user clicking the button.
+    Runs the Node.js extractor script and returns the resulting JSON data.
+    This is now the first step in the process.
     """
-    if os.path.exists(GENERATED_DIR):
-        import shutil
-        shutil.rmtree(GENERATED_DIR)
-    os.makedirs(GENERATED_DIR)
+    try:
+        if os.path.exists(GENERATED_DIR):
+            import shutil
+            shutil.rmtree(GENERATED_DIR)
+        os.makedirs(GENERATED_DIR)
 
-    if not os.path.exists(OUTPUT_JSON):
-        return jsonify({"error": f"{OUTPUT_JSON} not found. Build command may have failed."}), 500
+        # Run the Node.js script to create parsers_data.json
+        subprocess.run("node generate_json.js", check=True, capture_output=True, text=True, shell=True)
+        
+        # Read the generated file and send its content back to the browser
+        with open(OUTPUT_JSON, 'r', encoding='utf-8') as f:
+            all_parsers_data = json.load(f)
+        
+        return jsonify(all_parsers_data)
+    except subprocess.CalledProcessError as e:
+        return jsonify({"error": "Failed to run Node.js extractor script.", "details": e.stderr}), 500
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
-    with open(OUTPUT_JSON, 'r', encoding='utf-8') as f:
-        all_parsers_data = json.load(f)
-    
-    return jsonify(all_parsers_data)
 
 @app.route('/convert-single-parser', methods=['POST'])
 def convert_single_parser():
@@ -167,5 +174,4 @@ def zip_and_upload():
         return jsonify({"status": "failed", "error": f"Could not upload the file: {e}"}), 500
 
 if __name__ == '__main__':
-    # This part is for local testing. Render will use the gunicorn command from render.yaml.
     app.run(debug=True, host='0.0.0.0', port=int(os.environ.get('PORT', 8080)))
