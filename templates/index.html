@@ -3,19 +3,15 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>JS to Python Parser Converter</title>
+    <title>JS to Python Parser Factory</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
         body { font-family: 'Inter', sans-serif; }
-        #log-container {
-            height: 60vh;
-            background-color: #1a202c;
-            color: #a0aec0;
-        }
-        .log-line {
-            white-space: pre-wrap;
-            word-wrap: break-word;
-        }
+        #log-container { height: 60vh; }
+        .log-success { color: #4ade80; }
+        .log-error { color: #f87171; }
+        .log-warn { color: #facc15; }
+        .log-info { color: #60a5fa; }
     </style>
 </head>
 <body class="bg-gray-900 text-white flex flex-col items-center justify-center min-h-screen p-4">
@@ -32,14 +28,18 @@
             </button>
         </div>
 
+        <div id="progress-container" class="w-full bg-gray-700 rounded-full h-2.5 mb-4 hidden">
+            <div id="progressBar" class="bg-cyan-400 h-2.5 rounded-full" style="width: 0%"></div>
+        </div>
+
         <div id="log-container" class="w-full bg-gray-900 border border-gray-700 rounded-lg p-4 overflow-y-auto font-mono text-sm">
             <div id="logs">
-                <p class="text-gray-500">Logs will appear here when the process starts...</p>
+                <p class="text-gray-500">Ready to begin. Click the "Start Generation" button.</p>
             </div>
         </div>
 
         <div id="result" class="mt-8 text-center hidden">
-            <h2 class="text-2xl font-semibold text-green-400">Conversion Complete!</h2>
+            <h2 class="text-2xl font-semibold text-green-400">Process Complete!</h2>
             <p class="mt-2">Your ZIP file is ready. Click the link below to download:</p>
             <a id="downloadLink" href="#" target="_blank" class="mt-4 inline-block bg-green-500 hover:bg-green-600 text-white font-bold py-2 px-6 rounded transition duration-300 break-all"></a>
         </div>
@@ -50,65 +50,90 @@
         const logsDiv = document.getElementById('logs');
         const resultDiv = document.getElementById('result');
         const downloadLink = document.getElementById('downloadLink');
+        const progressContainer = document.getElementById('progress-container');
+        const progressBar = document.getElementById('progressBar');
 
-        startButton.addEventListener('click', () => {
+        function addLog(message, level = 'info') {
+            const logLine = document.createElement('p');
+            logLine.textContent = message;
+            logLine.className = `log-${level}`;
+            logsDiv.appendChild(logLine);
+            logsDiv.parentElement.scrollTop = logsDiv.parentElement.scrollHeight;
+        }
+
+        async function startGenerationProcess() {
             startButton.disabled = true;
-            startButton.textContent = 'Processing... Please Wait';
-            logsDiv.innerHTML = '<p class="text-yellow-400">Initializing process... This may take several minutes.</p>';
+            startButton.textContent = 'Processing... See Logs Below';
+            logsDiv.innerHTML = '';
             resultDiv.classList.add('hidden');
+            progressContainer.classList.remove('hidden');
+            progressBar.style.width = '0%';
 
-            const eventSource = new EventSource('/start-conversion');
-
-            eventSource.onmessage = function(event) {
-                if (logsDiv.querySelector('.text-gray-500')) {
-                    logsDiv.innerHTML = ''; // Clear initial message
+            try {
+                // Step 1: Get the list of parsers to convert
+                addLog('🚀 Initializing... Fetching parser to-do list from server.', 'info');
+                const startResponse = await fetch('/start-job', { method: 'POST' });
+                if (!startResponse.ok) {
+                    throw new Error(`Server initialization failed: ${startResponse.statusText}`);
                 }
-                
-                if (event.data === '---END---') {
-                    eventSource.close();
-                    startButton.disabled = false;
-                    startButton.textContent = 'Start Generation';
-                    return;
+                const parsers = await startResponse.json();
+                addLog(`✅ To-do list received. Found ${parsers.length} parsers to convert.`, 'success');
+
+                // Step 2: Loop through each parser and ask the server to convert it
+                let successCount = 0;
+                for (let i = 0; i < parsers.length; i++) {
+                    const parser = parsers[i];
+                    addLog(`(${i + 1}/${parsers.length}) Converting ${parser.js_filename}...`, 'info');
+
+                    try {
+                        const convertResponse = await fetch('/convert-single-parser', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify(parser)
+                        });
+                        const result = await convertResponse.json();
+
+                        if (convertResponse.ok && result.status === 'success') {
+                            addLog(`   - ✅ Successfully created ${result.filename}`, 'success');
+                            successCount++;
+                        } else {
+                            addLog(`   - ❌ Failed to convert ${parser.js_filename}. Reason: ${result.error || 'Unknown server error'}`, 'error');
+                        }
+                    } catch (e) {
+                        addLog(`   - ❌ Network error during conversion of ${parser.js_filename}: ${e.message}`, 'error');
+                    }
+                    
+                    // Update progress bar
+                    progressBar.style.width = `${((i + 1) / parsers.length) * 100}%`;
                 }
 
-                if (event.data.startsWith('🎉 DONE!')) {
-                    const parts = event.data.split(' ');
-                    const url = parts[parts.length - 1];
-                    downloadLink.href = url;
-                    downloadLink.textContent = url;
+                addLog(`\nConversion phase complete. Successfully generated ${successCount} out of ${parsers.length} parsers.`, 'info');
+
+                // Step 3: Tell the server to zip the files and upload
+                addLog('📦 Creating ZIP file and uploading...', 'info');
+                const zipResponse = await fetch('/zip-and-upload', { method: 'POST' });
+                const zipResult = await zipResponse.json();
+
+                if (zipResponse.ok && zipResult.status === 'success') {
+                    addLog(`🎉 DONE! Download your parsers here: ${zipResult.download_link}`, 'success');
+                    downloadLink.href = zipResult.download_link;
+                    downloadLink.textContent = zipResult.download_link;
                     resultDiv.classList.remove('hidden');
-                     // Scroll to the bottom to show the link
-                    window.scrollTo(0, document.body.scrollHeight);
+                } else {
+                    throw new Error(`Failed to zip and upload: ${zipResult.error}`);
                 }
 
-                const logLine = document.createElement('p');
-                logLine.className = 'log-line';
-                logLine.textContent = event.data;
-                
-                if (event.data.startsWith('✅') || event.data.startsWith('🎉')) {
-                    logLine.classList.add('text-green-400');
-                } else if (event.data.startsWith('❌')) {
-                    logLine.classList.add('text-red-400');
-                } else if (event.data.startsWith('⚠️')) {
-                    logLine.classList.add('text-yellow-400');
-                }
-
-                logsDiv.appendChild(logLine);
-                logsDiv.parentElement.scrollTop = logsDiv.parentElement.scrollHeight; // Auto-scroll
-            };
-
-            eventSource.onerror = function() {
-                const errorLine = document.createElement('p');
-                errorLine.className = 'log-line text-red-500';
-                errorLine.textContent = 'Connection to server lost. Process may have been interrupted.';
-                logsDiv.appendChild(errorLine);
-                logsDiv.parentElement.scrollTop = logsDiv.parentElement.scrollHeight;
-                eventSource.close();
+            } catch (error) {
+                addLog(`A critical error occurred: ${error.message}`, 'error');
+            } finally {
                 startButton.disabled = false;
                 startButton.textContent = 'Start Generation';
-            };
-        });
+            }
+        }
+
+        startButton.addEventListener('click', startGenerationProcess);
     </script>
 </body>
 </html>
+
 
