@@ -70,16 +70,19 @@
             progressBar.style.width = '0%';
 
             try {
-                // Step 1: Get the list of parsers to convert
-                addLog('🚀 Initializing... Fetching parser to-do list from server.', 'info');
-                const startResponse = await fetch('/start-job', { method: 'POST' });
-                if (!startResponse.ok) {
-                    throw new Error(`Server initialization failed: ${startResponse.statusText}`);
+                // Phase 1: Extract parser data from the server
+                addLog('🚀 Phase 1/2: Extracting Parser Data...', 'info');
+                const extractResponse = await fetch('/extract-data', { method: 'POST' });
+                const extractResult = await extractResponse.json();
+                
+                if (!extractResponse.ok) {
+                    throw new Error(`Server data extraction failed: ${extractResult.error} - ${extractResult.details || ''}`);
                 }
-                const parsers = await startResponse.json();
-                addLog(`✅ To-do list received. Found ${parsers.length} parsers to convert.`, 'success');
+                const parsers = extractResult;
+                addLog(`✅ Extraction complete. Found ${parsers.length} parsers to convert.`, 'success');
+                addLog('🚀 Phase 2/2: Converting Parsers with AI...', 'info');
 
-                // Step 2: Loop through each parser and ask the server to convert it
+                // Phase 2: Loop through each parser and ask the server to convert it
                 let successCount = 0;
                 for (let i = 0; i < parsers.length; i++) {
                     const parser = parsers[i];
@@ -103,13 +106,12 @@
                         addLog(`   - ❌ Network error during conversion of ${parser.js_filename}: ${e.message}`, 'error');
                     }
                     
-                    // Update progress bar
                     progressBar.style.width = `${((i + 1) / parsers.length) * 100}%`;
                 }
 
                 addLog(`\nConversion phase complete. Successfully generated ${successCount} out of ${parsers.length} parsers.`, 'info');
 
-                // Step 3: Tell the server to zip the files and upload
+                // Final Step: Tell the server to zip the files and upload
                 addLog('📦 Creating ZIP file and uploading...', 'info');
                 const zipResponse = await fetch('/zip-and-upload', { method: 'POST' });
                 const zipResult = await zipResponse.json();
